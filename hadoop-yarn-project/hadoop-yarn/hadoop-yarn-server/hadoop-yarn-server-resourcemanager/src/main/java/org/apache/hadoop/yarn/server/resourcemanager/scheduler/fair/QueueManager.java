@@ -50,16 +50,16 @@ public class QueueManager {
     QueueManager.class.getName());
 
   public static final String ROOT_QUEUE = "root";
-  
-  private final FairScheduler scheduler;
+
+  private final FSContext context;
 
   private final Collection<FSLeafQueue> leafQueues = 
       new CopyOnWriteArrayList<FSLeafQueue>();
   private final Map<String, FSQueue> queues = new HashMap<String, FSQueue>();
   private FSParentQueue rootQueue;
 
-  public QueueManager(FairScheduler scheduler) {
-    this.scheduler = scheduler;
+  public QueueManager(FSContext context) {
+    this.context = context;
   }
   
   public FSParentQueue getRootQueue() {
@@ -68,7 +68,7 @@ public class QueueManager {
 
   public void initialize(Configuration conf) throws IOException,
       SAXException, AllocationConfigurationException, ParserConfigurationException {
-    rootQueue = new FSParentQueue("root", scheduler, null);
+    rootQueue = new FSParentQueue(context, null, "root");
     queues.put(rootQueue.getName(), rootQueue);
     
     // Create the default queue
@@ -215,12 +215,13 @@ public class QueueManager {
     // queue to create.
     // Now that we know everything worked out, make all the queues
     // and add them to the map.
-    AllocationConfiguration queueConf = scheduler.getAllocationConfiguration();
+    AllocationConfiguration queueConf =
+        context.getScheduler().getAllocationConfiguration();
     FSLeafQueue leafQueue = null;
     for (int i = newQueueNames.size()-1; i >= 0; i--) {
       String queueName = newQueueNames.get(i);
       if (i == 0 && queueType != FSQueueType.PARENT) {
-        leafQueue = new FSLeafQueue(name, scheduler, parent);
+        leafQueue = new FSLeafQueue(context, parent, name);
         try {
           leafQueue.setPolicy(queueConf.getDefaultSchedulingPolicy());
         } catch (AllocationConfigurationException ex) {
@@ -233,7 +234,7 @@ public class QueueManager {
         leafQueue.updatePreemptionVariables();
         return leafQueue;
       } else {
-        FSParentQueue newParent = new FSParentQueue(queueName, scheduler, parent);
+        FSParentQueue newParent = new FSParentQueue(context, parent, queueName);
         try {
           newParent.setPolicy(queueConf.getDefaultSchedulingPolicy());
         } catch (AllocationConfigurationException ex) {
@@ -433,7 +434,7 @@ public class QueueManager {
       // Set scheduling policies and update queue metrics
       try {
         SchedulingPolicy policy = queueConf.getSchedulingPolicy(queue.getName());
-        policy.initialize(scheduler.getClusterResource());
+        policy.initialize(context.getClusterResource());
         queue.setPolicy(policy);
 
         queueMetrics.setMaxApps(queueConf.getQueueMaxApps(queue.getName()));

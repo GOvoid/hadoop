@@ -50,6 +50,11 @@ public class TestMaxRunningAppsEnforcer {
     Configuration conf = new Configuration();
     clock = new ControlledClock();
     scheduler = mock(FairScheduler.class);
+
+    FSContext context = mock(FSContext.class);
+    when(scheduler.getContext()).thenReturn(context);
+    when(context.getScheduler()).thenReturn(scheduler);
+
     when(scheduler.getConf()).thenReturn(
         new FairSchedulerConfiguration(conf));
     when(scheduler.getClock()).thenReturn(clock);
@@ -57,7 +62,7 @@ public class TestMaxRunningAppsEnforcer {
         conf);
     when(scheduler.getAllocationConfiguration()).thenReturn(allocConf);
     
-    queueManager = new QueueManager(scheduler);
+    queueManager = new QueueManager(scheduler.getContext());
     queueManager.initialize(conf);
     queueMaxApps = allocConf.queueMaxApps;
     userMaxApps = allocConf.userMaxApps;

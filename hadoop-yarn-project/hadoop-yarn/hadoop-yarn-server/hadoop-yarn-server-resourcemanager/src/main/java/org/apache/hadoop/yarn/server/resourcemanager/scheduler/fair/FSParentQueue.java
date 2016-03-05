@@ -56,9 +56,8 @@ public class FSParentQueue extends FSQueue {
   private Lock readLock = rwLock.readLock();
   private Lock writeLock = rwLock.writeLock();
 
-  public FSParentQueue(String name, FairScheduler scheduler,
-      FSParentQueue parent) {
-    super(name, scheduler, parent);
+  public FSParentQueue(FSContext context, FSParentQueue parent, String name) {
+    super(context, parent, name);
   }
   
   public void addChildQueue(FSQueue child) {
@@ -80,13 +79,13 @@ public class FSParentQueue extends FSQueue {
   }
 
   @Override
-  public void recomputeShares() {
+  public void updateInternal(boolean checkStarvation) {
     readLock.lock();
     try {
       policy.computeShares(childQueues, getFairShare());
       for (FSQueue childQueue : childQueues) {
         childQueue.getMetrics().setFairShare(childQueue.getFairShare());
-        childQueue.recomputeShares();
+        childQueue.updateInternal(checkStarvation);
       }
     } finally {
       readLock.unlock();
@@ -304,7 +303,7 @@ public class FSParentQueue extends FSQueue {
     }
     super.policy = policy;
   }
-  
+
   public void incrementRunnableApps() {
     writeLock.lock();
     try {

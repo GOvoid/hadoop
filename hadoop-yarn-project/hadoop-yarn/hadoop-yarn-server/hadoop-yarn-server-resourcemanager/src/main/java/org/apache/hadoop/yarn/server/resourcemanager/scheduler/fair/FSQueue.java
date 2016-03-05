@@ -50,6 +50,7 @@ public abstract class FSQueue implements Queue, Schedulable {
   private Resource fairShare = Resources.createResource(0, 0);
   private Resource steadyFairShare = Resources.createResource(0, 0);
   private final String name;
+  protected final FSContext context;
   protected final FairScheduler scheduler;
   private final FSQueueMetrics metrics;
   
@@ -64,9 +65,10 @@ public abstract class FSQueue implements Queue, Schedulable {
   private float fairSharePreemptionThreshold = 0.5f;
   private boolean preemptable = true;
 
-  public FSQueue(String name, FairScheduler scheduler, FSParentQueue parent) {
+  public FSQueue(FSContext context, FSParentQueue parent, String name) {
     this.name = name;
-    this.scheduler = scheduler;
+    this.context = context;
+    this.scheduler = context.getScheduler();
     this.metrics = FSQueueMetrics.forQueue(getName(), parent, true, scheduler.getConf());
     metrics.setMinShare(getMinShare());
     metrics.setMaxShare(getMaxShare());
@@ -246,9 +248,14 @@ public abstract class FSQueue implements Queue, Schedulable {
 
   /**
    * Recomputes the shares for all child queues and applications based on this
-   * queue's current share
+   * queue's current share, and checks for starvation.
    */
-  public abstract void recomputeShares();
+  public abstract void updateInternal(boolean checkStarvation);
+
+  public void update(Resource fairShare, boolean checkStarvation) {
+    setFairShare(fairShare);
+    updateInternal(checkStarvation);
+  }
 
   /**
    * Update the min/fair share preemption timeouts, threshold and preemption

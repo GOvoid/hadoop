@@ -77,10 +77,14 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
   private ResourceWeights resourceWeights;
   private Resource demand = Resources.createResource(0);
   private FairScheduler scheduler;
+  private FSQueue fsQueue;
   private Resource fairShare = Resources.createResource(0, 0);
-  private Resource preemptedResources = Resources.createResource(0);
   private RMContainerComparator comparator = new RMContainerComparator();
-  private final Map<RMContainer, Long> preemptionMap = new HashMap<RMContainer, Long>();
+
+  // Preemption related variables
+  private Resource preemptedResources = Resources.createResource(0);
+  private final Set<RMContainer> containersToPreempt = new HashSet<>();
+  private long lastTimeAtFairShare;
 
   // Used to record node reservation by an app.
   // Key = RackName, Value = Set of Nodes reserved by app on rack
@@ -106,7 +110,9 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
     super(applicationAttemptId, user, queue, activeUsersManager, rmContext);
 
     this.scheduler = scheduler;
+    this.fsQueue = queue;
     this.startTime = scheduler.getClock().getTime();
+    this.lastTimeAtFairShare = this.startTime;
     this.priority = Priority.newInstance(1);
     this.resourceWeights = new ResourceWeights();
   }
@@ -145,6 +151,7 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
 
     // Remove from the list of containers
     liveContainers.remove(rmContainer.getContainerId());
+    containersToPreempt.remove(rmContainer);
 
     Resource containerResource = rmContainer.getContainer().getResource();
     RMAuditLogger.logSuccess(getUser(), 
@@ -154,9 +161,6 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
     // Update usage metrics 
     queue.getMetrics().releaseResources(getUser(), 1, containerResource);
     this.attemptResourceUsage.decUsed(containerResource);
-
-    // remove from preemption map if it is completed
-    preemptionMap.remove(rmContainer);
 
     // Clear resource utilization metrics cache.
     lastMemoryAggregateAllocationUpdateTime = -1;
@@ -423,18 +427,13 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
   }
 
   // related methods
-  public void addPreemption(RMContainer container, long time) {
-    assert preemptionMap.get(container) == null;
-    preemptionMap.put(container, time);
+  public void addPreemption(RMContainer container) {
+    containersToPreempt.add(container);
     Resources.addTo(preemptedResources, container.getAllocatedResource());
   }
 
-  public Long getContainerPreemptionTime(RMContainer container) {
-    return preemptionMap.get(container);
-  }
-
   public Set<RMContainer> getPreemptionContainers() {
-    return preemptionMap.keySet();
+    return containersToPreempt;
   }
   
   @Override
@@ -476,6 +475,14 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
             .getHttpAddress(), capability, priority, null);
 
     return container;
+  }
+
+  /**
+   * Reserve a spot on this node for a ResourceRequest that would fit in the
+   * containerSize provided.
+   */
+  public boolean reserve(FSSchedulerNode node, Resource containerSize) {
+    return false;
   }
 
   /**
@@ -856,6 +863,32 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
         return c2.getContainerId().compareTo(c1.getContainerId());
       }
       return ret;
+    }
+  }
+
+  /**
+   * Helper method that computes the extent of fairshare starvation.
+   */
+  Resource fairShareStarvation() {
+    Resource starvation = Resources.subtractFrom(
+        Resources.multiply(
+            getFairShare(), fsQueue.getFairSharePreemptionThreshold()),
+        getResourceUsage());
+
+    boolean starved = Resources.greaterThan(
+        fsQueue.getPolicy().getResourceCalculator(),
+        scheduler.getClusterResource(), starvation, Resources.none());
+
+    long now = scheduler.getClock().getTime();
+    if (!starved) {
+      lastTimeAtFairShare = now;
+    }
+
+    if (starved &&
+        (now - lastTimeAtFairShare > fsQueue.getFairSharePreemptionTimeout())) {
+      return starvation;
+    } else {
+      return Resources.none();
     }
   }
 

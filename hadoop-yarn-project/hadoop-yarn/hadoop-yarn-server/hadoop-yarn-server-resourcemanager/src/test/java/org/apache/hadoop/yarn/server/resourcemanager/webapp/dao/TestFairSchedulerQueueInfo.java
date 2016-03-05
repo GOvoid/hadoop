@@ -45,7 +45,7 @@ public class TestFairSchedulerQueueInfo {
     when(scheduler.getClusterResource()).thenReturn(Resource.newInstance(1, 1));
     SystemClock clock = SystemClock.getInstance();
     when(scheduler.getClock()).thenReturn(clock);
-    QueueManager queueManager = new QueueManager(scheduler);
+    QueueManager queueManager = new QueueManager(scheduler.getContext());
     queueManager.initialize(conf);
 
     FSQueue testQueue = queueManager.getLeafQueue("test", true);

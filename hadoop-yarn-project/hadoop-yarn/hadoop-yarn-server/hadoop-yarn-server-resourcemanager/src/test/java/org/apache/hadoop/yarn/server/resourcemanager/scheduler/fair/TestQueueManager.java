@@ -38,13 +38,17 @@ public class TestQueueManager {
   public void setUp() throws Exception {
     conf = new FairSchedulerConfiguration();
     FairScheduler scheduler = mock(FairScheduler.class);
+    FSContext context = mock(FSContext.class);
+    when(scheduler.getContext()).thenReturn(context);
+    when(context.getScheduler()).thenReturn(scheduler);
+
     AllocationConfiguration allocConf = new AllocationConfiguration(conf);
     when(scheduler.getAllocationConfiguration()).thenReturn(allocConf);
     when(scheduler.getConf()).thenReturn(conf);
     SystemClock clock = SystemClock.getInstance();
     when(scheduler.getClock()).thenReturn(clock);
     notEmptyQueues = new HashSet<FSQueue>();
-    queueManager = new QueueManager(scheduler) {
+    queueManager = new QueueManager(context) {
       @Override
       public boolean isEmpty(FSQueue queue) {
         return !notEmptyQueues.contains(queue);
